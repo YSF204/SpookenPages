@@ -6,6 +6,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { IBM_Plex_Serif } from "next/font/google";
 import { Mona_Sans } from "next/font/google";
+import { Toaster } from "sonner";
 
 
 import Navbar from "@/components/navbar";
@@ -37,7 +38,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <ClerkProvider appearance={{ theme: shadcn }}>
           <Navbar />
           {children}
+          <Toaster />
         </ClerkProvider>
+
       </body>
     </html>
   );
