@@ -1,11 +1,14 @@
 "use client"
 
 import { useRef, useState } from "react"
+import { useAuth } from "@clerk/nextjs"
 import { useRouter } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { ImageIcon, Upload, X } from "lucide-react"
+import { Files, ImageIcon, Upload, X } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
+import { checkBookExists, createBook, deleteUploadedBlobs, saveBookSegments } from "@/lib/actions/book.actions"
+import {upload} from "@vercel/blob/client";
 
 import LoadingOverlay from "@/components/LoadingOverlay"
 import { Button } from "@/components/ui/button"
@@ -27,12 +30,13 @@ import {
   voiceCategories,
   voiceOptions,
 } from "@/lib/constants"
-import { cn } from "@/lib/utils"
+import { cn , parsePDFFile } from "@/lib/utils"
+import { toast } from "sonner"
 
 const voiceKeys = ["dave", "daniel", "chris", "rachel", "sarah"] as const
 
 const uploadFormSchema = z.object({
-  pdf: z
+  pdfFile: z
     .custom<File>((file) => file instanceof File, "PDF file is required")
     .refine(
       (file) => ACCEPTED_PDF_TYPES.includes(file.type),
@@ -42,7 +46,7 @@ const uploadFormSchema = z.object({
       (file) => file.size <= MAX_FILE_SIZE,
       "PDF must be 50MB or smaller"
     ),
-  cover: z
+  coverImage: z
     .custom<File | undefined>(
       (file) => file === undefined || file instanceof File,
       "Invalid cover image"
@@ -58,7 +62,7 @@ const uploadFormSchema = z.object({
     ),
   title: z.string().trim().min(1, "Title is required"),
   author: z.string().trim().min(1, "Author name is required"),
-  voice: z.enum(voiceKeys, { message: "Please select a voice" }),
+  persona: z.enum(voiceKeys, { message: "Please select a persona" }),
 })
 
 type UploadFormValues = z.infer<typeof uploadFormSchema>
@@ -152,48 +156,108 @@ const voiceGroupLabels = {
 const UploadForm = () => {
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const {userId} = useAuth();
 
   const form = useForm<UploadFormValues>({
     resolver: zodResolver(uploadFormSchema),
     defaultValues: {
       title: "",
       author: "",
-      voice: DEFAULT_VOICE,
+      persona: "dave",
+      coverImage : undefined,
+      pdfFile : undefined,
+
     },
   })
 
-  const onSubmit = async (values: UploadFormValues) => {
+  const onSubmit = async (data: UploadFormValues) => {
+    if(!userId) {
+      return toast.error("Please sign in to upload a book");
+    };
+
+
     setIsSubmitting(true)
+    const uploadedBlobKeys: string[] = []
 
-    try {
-      const formData = new FormData()
-      formData.append("pdf", values.pdf)
-      if (values.cover) {
-        formData.append("cover", values.cover)
-      }
-      formData.append("title", values.title)
-      formData.append("author", values.author)
-      formData.append("voice", values.voice)
-      formData.append("voiceId", voiceOptions[values.voice].id)
+    // POSTHOG -> TRACK BOOK UPLOADS
+    try { 
 
-      const response = await fetch("/api/books", {
-        method: "POST",
-        body: formData,
-      })
+     const existsCheck = await checkBookExists(data.title);
+     if(existsCheck.exists && existsCheck.book){
+      toast.info("Book with same title already exists")
+      form.reset();
+      router.push(`/books/${existsCheck.book.slug}`);
+      return;
+     }
 
-      if (!response.ok) {
-        throw new Error("Failed to upload book")
-      }
+     const fileTitle = data.title.replace(/\s+/g,'_');
+     const pdfFile = data.pdfFile;
+     const parsedPdf = await parsePDFFile(pdfFile);
 
-      const data = (await response.json()) as { slug?: string }
-      router.push(data.slug ? `/books/${data.slug}` : "/")
-    } catch {
-      form.setError("root", {
-        message: "Something went wrong while uploading. Please try again.",
-      })
+     if(parsedPdf.content.length === 0) {
+      toast.error("failed to parse PDF , Please try again with different file.");
+      return;
+     }
+     const uploadedPDFBlob = await upload(`${userId}/${fileTitle}` , pdfFile , {
+      access : 'public',
+      handleUploadUrl:'/api/upload',
+      contentType : 'application/pdf'
+     });
+     uploadedBlobKeys.push(uploadedPDFBlob.pathname)
+
+     const coverBlob = data.coverImage
+       ? data.coverImage
+       : await (await fetch(parsedPdf.cover)).blob();
+     const uploadedCoverBlob = await upload(`${userId}/${fileTitle}_cover.png`, coverBlob, {
+       access : 'public',
+       handleUploadUrl:'/api/upload',
+       contentType : coverBlob.type || 'image/png',
+     });
+     uploadedBlobKeys.push(uploadedCoverBlob.pathname)
+
+     const book  = await createBook({
+      title : data.title,
+      author : data.author,
+      persona:data.persona,
+      fileURL:uploadedPDFBlob.url,
+      fileBlobKey : uploadedPDFBlob.pathname,
+      coverURL : uploadedCoverBlob.url,
+      coverBlobKey : uploadedCoverBlob.pathname,
+      fileSize : pdfFile.size,
+     })
+
+     if(!book.success){
+      throw new Error(book.error ?? "Failed to create a Book , Please try again.");
+     }
+
+     if(book.alreadyExists){
+      toast.info("Book with same title already exists")
+      form.reset();
+      router.push(`/books/${book.book.slug}`);
+      return;
+     }
+
+     const segments = await saveBookSegments(book.book._id, parsedPdf.content, uploadedBlobKeys);
+     if(!segments.success){
+      throw new Error(segments.error ?? "Failed to save book segments , Please try again.");
+     }
+
+     form.reset();
+     router.push('/');
+
+     
+
+
+    } catch (error: unknown) {
+      console.error(error);
+      await deleteUploadedBlobs(uploadedBlobKeys);
+      return toast.error("Something went wrong while uploading. Please try again.");
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
+
+
+    
   }
 
   return (
@@ -207,7 +271,7 @@ const UploadForm = () => {
         >
           <FormField
             control={form.control}
-            name="pdf"
+            name="pdfFile"
             render={({ field }) => (
               <FormItem>
                 <FormControl>
@@ -227,7 +291,7 @@ const UploadForm = () => {
 
           <FormField
             control={form.control}
-            name="cover"
+            name="coverImage"
             render={({ field }) => (
               <FormItem>
                 <FormControl>
@@ -283,7 +347,7 @@ const UploadForm = () => {
 
           <FormField
             control={form.control}
-            name="voice"
+            name="persona"
             render={({ field }) => (
               <FormItem>
                 <FormLabel className="form-label">

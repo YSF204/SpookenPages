@@ -1,5 +1,5 @@
 import React from 'react'
-import BookCardProps from '@/types'
+import type { BookCardProps } from '@/types'
 import Link from 'next/link'
 import Image from 'next/image'
 const BookCard = ({title, author, coverURL, slug}: BookCardProps) => {
