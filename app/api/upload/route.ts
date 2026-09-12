@@ -28,8 +28,15 @@ export async function POST(request: Request):Promise<NextResponse>{
         },
         onUploadCompleted: async({blob , tokenPayload}) =>{
             console.log('File Uploaded to blob' , blob.url)
-            const payload = tokenPayload ? JSON.parse(tokenPayload) : null;
-            const {userId} = payload;
+            if (!tokenPayload) return;
+
+            try {
+                const payload = JSON.parse(tokenPayload) as { userId?: string };
+                if (!payload.userId) return;
+            } catch {
+                console.error('Invalid tokenPayload received from blob upload');
+                return;
+            }
 
             //todo : postHOG
           
@@ -40,7 +47,7 @@ export async function POST(request: Request):Promise<NextResponse>{
 
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Internal server error';
-        const status = message.includes('unauthorized') ? 401 : 500;
+        const status = message.toLowerCase().includes('unauthorized') ? 401 : 500;
         return NextResponse.json({error: message}, {status});
     }
 

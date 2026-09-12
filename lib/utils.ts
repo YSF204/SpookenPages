@@ -32,6 +32,8 @@ export const splitIntoSegments = (
     text: string,
     segmentSize: number = 500, // Maximum words per segment
     overlapSize: number = 50, // Words to overlap between segments for context
+    pageNumber?: number,
+    segmentIndexOffset: number = 0,
 ): TextSegment[] => {
   // Validate parameters to prevent infinite loops
   if (segmentSize <= 0) {
@@ -54,7 +56,8 @@ export const splitIntoSegments = (
 
     segments.push({
       text: segmentText,
-      segmentIndex,
+      segmentIndex: segmentIndexOffset + segmentIndex,
+      pageNumber,
       wordCount: segmentWords.length,
     });
 
@@ -83,11 +86,20 @@ export const getVoice = (persona?: string) => {
   return voiceOptions[DEFAULT_VOICE];
 };
 
+type PDFTextItem = { str: string };
+
+const isPDFTextItem = (item: unknown): item is PDFTextItem =>
+  typeof item === 'object' &&
+  item !== null &&
+  'str' in item &&
+  typeof item.str === 'string';
+
 // Format duration in seconds to MM:SS format
 export const formatDuration = (seconds: number): string => {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
+  const total = Math.max(0, Math.floor(seconds));
+  const mins = Math.floor(total / 60);
+  const secs = total % 60;
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
 
 export async function parsePDFFile(file: File) {
@@ -131,20 +143,27 @@ export async function parsePDFFile(file: File) {
     const coverDataURL = canvas.toDataURL('image/png');
 
     // Extract text from all pages
-    let fullText = '';
+    const segments: TextSegment[] = [];
+    let segmentIndexOffset = 0;
 
     for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
       const page = await pdfDocument.getPage(pageNum);
       const textContent = await page.getTextContent();
-      const pageText = textContent.items
-          .filter((item:any) => 'str' in item)
-          .map((item:any) => (item as { str: string }).str)
-          .join(' ');
-      fullText += pageText + '\n';
+      const pageText = textContent.items.reduce(
+        (text, item) =>
+          isPDFTextItem(item) ? `${text}${text ? ' ' : ''}${item.str}` : text,
+        '',
+      );
+      const pageSegments = splitIntoSegments(
+        pageText,
+        500,
+        50,
+        pageNum,
+        segmentIndexOffset,
+      );
+      segments.push(...pageSegments);
+      segmentIndexOffset += pageSegments.length;
     }
-
-    // Split text into segments for search
-    const segments = splitIntoSegments(fullText);
 
     // Clean up PDF document resources
     await pdfDocument.cleanup();

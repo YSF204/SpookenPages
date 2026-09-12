@@ -7,7 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { Files, ImageIcon, Upload, X } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
-import { checkBookExists, createBook, saveBookSegments } from "@/lib/actions/book.actions"
+import { checkBookExists, createBook, deleteUploadedBlobs, saveBookSegments } from "@/lib/actions/book.actions"
 import {upload} from "@vercel/blob/client";
 
 import LoadingOverlay from "@/components/LoadingOverlay"
@@ -177,13 +177,14 @@ const UploadForm = () => {
 
 
     setIsSubmitting(true)
+    const uploadedBlobKeys: string[] = []
 
     // POSTHOG -> TRACK BOOK UPLOADS
     try { 
 
      const existsCheck = await checkBookExists(data.title);
      if(existsCheck.exists && existsCheck.book){
-      toast.info("Book with same title aleardy exists")
+      toast.info("Book with same title already exists")
       form.reset();
       router.push(`/books/${existsCheck.book.slug}`);
       return;
@@ -197,33 +198,31 @@ const UploadForm = () => {
       toast.error("failed to parse PDF , Please try again with different file.");
       return;
      }
-     const uploadedPDFBlob = await upload(fileTitle , pdfFile , {
+     const uploadedPDFBlob = await upload(`${userId}/${fileTitle}` , pdfFile , {
       access : 'public',
       handleUploadUrl:'/api/upload',
       contentType : 'application/pdf'
      });
+     uploadedBlobKeys.push(uploadedPDFBlob.pathname)
 
-     let coverURL = parsedPdf.cover;
-
-     if(data.coverImage){
-      const coverFile = data.coverImage;
-
-      const uploadedCoverBlob = await upload(`${fileTitle}_cover.png` , coverFile , {
-        access : 'public',
-        handleUploadUrl:'/api/upload',
-        contentType : coverFile.type,
-       });
-       coverURL = uploadedCoverBlob.url;
-     }
+     const coverBlob = data.coverImage
+       ? data.coverImage
+       : await (await fetch(parsedPdf.cover)).blob();
+     const uploadedCoverBlob = await upload(`${userId}/${fileTitle}_cover.png`, coverBlob, {
+       access : 'public',
+       handleUploadUrl:'/api/upload',
+       contentType : coverBlob.type || 'image/png',
+     });
+     uploadedBlobKeys.push(uploadedCoverBlob.pathname)
 
      const book  = await createBook({
-      clerkId: userId,
       title : data.title,
       author : data.author,
       persona:data.persona,
       fileURL:uploadedPDFBlob.url,
       fileBlobKey : uploadedPDFBlob.pathname,
-      coverURL : coverURL,
+      coverURL : uploadedCoverBlob.url,
+      coverBlobKey : uploadedCoverBlob.pathname,
       fileSize : pdfFile.size,
      })
 
@@ -232,13 +231,13 @@ const UploadForm = () => {
      }
 
      if(book.alreadyExists){
-      toast.info("Book with same title aleardy exists")
+      toast.info("Book with same title already exists")
       form.reset();
       router.push(`/books/${book.book.slug}`);
       return;
      }
 
-     const segments = await saveBookSegments(book.book._id, userId, parsedPdf.content);
+     const segments = await saveBookSegments(book.book._id, parsedPdf.content, uploadedBlobKeys);
      if(!segments.success){
       throw new Error(segments.error ?? "Failed to save book segments , Please try again.");
      }
@@ -249,8 +248,9 @@ const UploadForm = () => {
      
 
 
-    } catch (error : any ) {
+    } catch (error: unknown) {
       console.error(error);
+      await deleteUploadedBlobs(uploadedBlobKeys);
       return toast.error("Something went wrong while uploading. Please try again.");
     } finally {
       setIsSubmitting(false);
