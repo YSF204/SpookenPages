@@ -13,6 +13,7 @@
     "@clerk/nextjs": "^7.8.2",
     "@clerk/ui": "^1.30.8",
     "@hookform/resolvers": "^5.9.1",
+    "@vapi-ai/web": "^2.7.0",
     "@vercel/blob": "^2.8.0",
     "@vercel/global-config": "^1.5.1",
     "class-variance-authority": "^0.7.1",

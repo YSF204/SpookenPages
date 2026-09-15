@@ -9,7 +9,10 @@ import { CreateBook, TextSegment } from '@/types';
 import { connectToDatabase } from '@/Database/mongoose';
 import Book from '@/Database/models/book.model';
 import { generateSlug, serializeData } from '@/lib/utils';
-import BookSegment from '@/Database/models/bookSegment.model';
+import BookSegment from '@/Database/models/bookSegment.model'
+import {revalidatePath} from "next/cache";
+
+
 
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
@@ -148,6 +151,7 @@ export const createBook = async (data: CreateBook): Promise<CreateBookResult> =>
       slug,
       totalSegments: 0,
     });
+    revalidatePath('/');
     return { success: true, book: serializeData(book) };
   } catch (error: unknown) {
     console.error(error);
@@ -241,4 +245,61 @@ export const getAllBooks = async () => {
       error: getErrorMessage(error, 'Failed to get all books'),
     };
   }
+};
+
+export const getBookBySlug = async (slug: string) => {
+  try {
+    const { userId } = await auth();
+    if (!userId) return { success: true as const, data: null };
+    if (typeof slug !== 'string' || slug.trim().length === 0) {
+      return { success: true as const, data: null };
+    }
+
+    await connectToDatabase();
+    const book = await Book.findOne({ slug: slug.trim(), clerkId: userId }).lean();
+
+    return { success: true as const, data: book ? serializeData(book) : null };
+  } catch (error: unknown) {
+    console.error(error);
+    return {
+      success: false as const,
+      error: getErrorMessage(error, 'Failed to get book'),
+      data: null,
+    };
+  }
+};
+
+export const searchBookSegments = async (
+  bookId: string,
+  query: string,
+  numberOfSegments = 3,
+) => {
+  if (typeof bookId !== 'string' || bookId.trim().length === 0) {
+    throw new Error('Book ID is required');
+  }
+  if (typeof query !== 'string' || query.trim().length === 0) {
+    throw new Error('Query is required');
+  }
+
+  await connectToDatabase();
+
+  const segments = await BookSegment.find(
+    { bookId: bookId.trim(), $text: { $search: query.trim() } },
+    { content: 1, segmentIndex: 1, _id: 0, score: { $meta: 'textScore' } },
+  )
+    .sort({ score: { $meta: 'textScore' } })
+    .limit(numberOfSegments)
+    .lean();
+
+  if (segments.length > 0) return segments;
+
+  const escapedQuery = query.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return BookSegment.find({
+    bookId: bookId.trim(),
+    content: { $regex: escapedQuery, $options: 'i' },
+  })
+    .select({ content: 1, segmentIndex: 1, _id: 0 })
+    .sort({ segmentIndex: 1 })
+    .limit(numberOfSegments)
+    .lean();
 };

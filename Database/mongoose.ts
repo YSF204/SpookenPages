@@ -1,9 +1,6 @@
 import mongoose from "mongoose";
 
 const MONGODB_URI = process.env.MONGO_URI;
-if (!MONGODB_URI) {
-    throw new Error("MONGO_URI is not defined");
-}
 
 declare global {
     var mongooseCache: {
@@ -20,6 +17,10 @@ if (!cached) {
 
 export const connectToDatabase = async () =>{
     if(cached.conn) return cached.conn;
+
+    if (!MONGODB_URI) {
+        throw new Error("MONGO_URI is not defined");
+    }
 
     if(!cached.promise){
         cached.promise = mongoose.connect(MONGODB_URI , {bufferCommands: false});
