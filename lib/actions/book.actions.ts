@@ -9,7 +9,10 @@ import { CreateBook, TextSegment } from '@/types';
 import { connectToDatabase } from '@/Database/mongoose';
 import Book from '@/Database/models/book.model';
 import { generateSlug, serializeData } from '@/lib/utils';
-import BookSegment from '@/Database/models/bookSegment.model';
+import BookSegment from '@/Database/models/bookSegment.model'
+import {revalidatePath} from "next/cache";
+
+
 
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
@@ -148,6 +151,7 @@ export const createBook = async (data: CreateBook): Promise<CreateBookResult> =>
       slug,
       totalSegments: 0,
     });
+    revalidatePath('/');
     return { success: true, book: serializeData(book) };
   } catch (error: unknown) {
     console.error(error);

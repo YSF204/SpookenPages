@@ -41,7 +41,7 @@ export function LibraryHero() {
           <p className="library-hero-description">
             Manage your books and turn them into interactive AI conversations.
           </p>
-          <Link href="/upload" className="library-cta-primary">
+          <Link href="/books/new" className="library-cta-primary">
             <Plus className="size-5 md:size-6" strokeWidth={2.5} />
             Add New Book
           </Link>
