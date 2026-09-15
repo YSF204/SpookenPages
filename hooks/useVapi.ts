@@ -4,6 +4,7 @@ import { IBook , Messages} from "@/types";
 import { useAuth } from "@clerk/nextjs";
 import { useEffect, useRef, useState } from "react";
 import { ASSISTANT_ID, DEFAULT_VOICE } from "@/lib/constants";
+import { endVoiceSession, startVoiceSession } from "@/lib/actions/session.actions";
 import Vapi from "@vapi-ai/web";
 
 export type CallStatus = 'idle' | 'connecting' | 'starting' | 'listening' | 'thinking' | 'speaking';
@@ -53,6 +54,16 @@ export const useVapi = (book: IBook) =>{
     
     
     const isActive = status == "listening" || status == "thinking" || status == "speaking";
+
+    const finishVoiceSession = async () => {
+        const sessionId = sessionIdRef.current;
+        if (!sessionId) return;
+
+        sessionIdRef.current = null;
+        const startedAt = startTimeRef.current ?? Date.now();
+        startTimeRef.current = null;
+        await endVoiceSession(sessionId, Math.floor((Date.now() - startedAt) / 1000));
+    };
     
 // limits 
 
@@ -70,7 +81,10 @@ export const useVapi = (book: IBook) =>{
         const handleCallStart = () => setStatus("listening");
         const handleSpeechStart = () => setStatus("speaking");
         const handleSpeechEnd = () => setStatus("listening");
-        const handleCallEnd = () => setStatus("idle");
+        const handleCallEnd = () => {
+            void finishVoiceSession();
+            setStatus("idle");
+        };
         const handleMessage = (message: unknown) => {
             if (!message || typeof message !== "object") return;
 
@@ -98,15 +112,7 @@ export const useVapi = (book: IBook) =>{
                 return;
             }
 
-            setmessages((currentMessages) =>
-                currentMessages.some(
-                    (current) =>
-                        current.role === transcriptMessage.role &&
-                        current.content === transcriptMessage.content
-                )
-                    ? currentMessages
-                    : [...currentMessages, transcriptMessage]
-            );
+            setmessages((currentMessages) => [...currentMessages, transcriptMessage]);
 
             if (event.role === "user") {
                 setcurrentUserMessage(null);
@@ -149,15 +155,28 @@ export const useVapi = (book: IBook) =>{
         setStatus("connecting");
 
         try {
+            if (!ASSISTANT_ID) throw new Error("Vapi assistant ID is not configured");
+
+            const session = await startVoiceSession(book._id);
+            if (!session.success || !session.sessionId) {
+                throw new Error(session.error ?? "Unable to start the voice session");
+            }
+
+            sessionIdRef.current = session.sessionId;
+            startTimeRef.current = Date.now();
             const firstMessage = `Hey, nice to meet you , and I'm here to help you read and understand the book ${book.title}.`;
 
             await getVAPI().start(ASSISTANT_ID,{
                 firstMessage,
                 variableValues :{
-                    title : book.title, author : book.author, bookId: book._id,
+                    title : book.title,
+                    author : book.author,
+                    bookId: book._id,
+                    sessionId: session.sessionId,
                 }
             })
         } catch (error){
+            await finishVoiceSession();
             console.error(error);
             setStatus("idle");
             setlimitError(error instanceof Error ? error.message : "An error occurred while connecting to the server");
@@ -166,6 +185,7 @@ export const useVapi = (book: IBook) =>{
     const stop = async () =>{
         isStoppingRef.current = true;
         await getVAPI().stop();
+        await finishVoiceSession();
     };
     const clearErrors = () => setlimitError(null);
 

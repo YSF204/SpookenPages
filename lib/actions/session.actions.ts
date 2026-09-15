@@ -3,13 +3,17 @@
 import connectToDatabase from "@/Database/mongoose";
 import VoiceSession from "@/Database/models/voiceSession.model";
 import { EndSessionResult, StartSessionResult } from "@/types";
+import { auth } from "@clerk/nextjs/server";
 
-export const startVoiceSession = async (clerkId: string, bookId: string):Promise<StartSessionResult> =>{
+export const startVoiceSession = async (bookId: string):Promise<StartSessionResult> =>{
 
     try {
+        const { userId } = await auth();
+        if (!userId) return { success: false, error: "Unauthorized" };
+
         await connectToDatabase();
 
-        const session = await VoiceSession.create({clerkId,bookId,startedAt: new Date(), durationSeconds: 0})
+        const session = await VoiceSession.create({clerkId: userId,bookId,startedAt: new Date(), durationSeconds: 0})
 
         return {
             success: true,
@@ -31,9 +35,12 @@ export const endVoiceSession = async (
     durationSeconds: number,
 ): Promise<EndSessionResult> => {
     try {
+        const { userId } = await auth();
+        if (!userId) return { success: false, error: "Unauthorized" };
+
         await connectToDatabase();
         const session = await VoiceSession.findByIdAndUpdate(
-            sessionId,
+            { _id: sessionId, clerkId: userId },
             {
                 endedAt: new Date(),
                 durationSeconds,

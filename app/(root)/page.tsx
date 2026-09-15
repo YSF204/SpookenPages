@@ -11,7 +11,7 @@ export default async function Page() {
       <LibraryHero />
 
       <div className="library-books-grid">
-        {books.map((book : any)=>{
+        {books.map((book) => {
           return <BookCard key={book._id} title={book.title} author={book.author} coverURL={book.coverURL} slug={book.slug} />
         })}
        
