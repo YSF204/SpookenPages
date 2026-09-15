@@ -142,6 +142,13 @@ export const useVapi = (book: IBook) =>{
             client.removeListener("call-end", handleCallEnd);
             client.removeListener("message", handleMessage);
             client.removeListener("error", handleError);
+
+            if (sessionIdRef.current) {
+                void client.stop().catch((error) => console.error("Vapi stop error", error));
+                void finishVoiceSession().catch((error) =>
+                    console.error("Error ending voice session", error),
+                );
+            }
         };
     }, []);
 
@@ -184,8 +191,11 @@ export const useVapi = (book: IBook) =>{
     }
     const stop = async () =>{
         isStoppingRef.current = true;
-        await getVAPI().stop();
-        await finishVoiceSession();
+        try {
+            await getVAPI().stop();
+        } finally {
+            await finishVoiceSession();
+        }
     };
     const clearErrors = () => setlimitError(null);
 
