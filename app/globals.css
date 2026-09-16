@@ -612,6 +612,15 @@
   .transcript-empty-hint {
     @apply text-[var(--text-muted)] text-sm mt-1;
   }
+  .chat-input-form {
+    @apply mt-3 flex w-full items-center gap-2 bg-white rounded-[14px] p-2;
+  }
+  .chat-input {
+    @apply flex-1 min-w-0 bg-transparent px-3 py-2 text-base text-[#212a3b] outline-none placeholder:text-[var(--text-muted)] disabled:opacity-50;
+  }
+  .chat-send-btn {
+    @apply flex size-10 shrink-0 items-center justify-center rounded-full bg-[#663820] text-white transition-opacity disabled:opacity-40;
+  }
 
   /* ===========================================
      VOICE SELECTOR COMPONENT

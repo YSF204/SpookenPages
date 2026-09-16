@@ -30,7 +30,7 @@ const Transcript = ({
         <Mic className="mb-4 size-12 text-[#8b7355]" aria-hidden="true" />
         <p className="transcript-empty-text">No conversation yet</p>
         <p className="transcript-empty-hint">
-          Click the mic button above to start talking
+          Click the mic button to talk, or type a message below
         </p>
       </div>
     );
