@@ -10,16 +10,24 @@ const toolCallSchema = z.object({
   id: z.string().min(1),
   name: z.string(),
   arguments: z.object({
-    bookId: z.string().min(1),
     query: z.string().min(1),
-    sessionId: z.string().min(1),
   }),
 });
 
+// The assistant only supplies the query: bookId and sessionId come from the call
+// itself, so the model never has to know (or say out loud) either id.
 const requestSchema = z.object({
   message: z.object({
     type: z.literal('tool-calls'),
     toolCallList: z.array(toolCallSchema),
+    call: z.object({
+      assistantOverrides: z.object({
+        variableValues: z.object({
+          bookId: z.string().min(1),
+          sessionId: z.string().min(1),
+        }),
+      }),
+    }),
   }),
 });
 
@@ -35,12 +43,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid Vapi tool call' }, { status: 400 });
   }
 
+  const { bookId: requestedBookId, sessionId } = body.message.call.assistantOverrides.variableValues;
+
   const results = await Promise.all(
     body.message.toolCallList
-      .filter((toolCall) => toolCall.name === 'search book')
       .map(async (toolCall) => {
         try {
-          const { bookId: requestedBookId, query, sessionId } = toolCall.arguments;
+          const { query } = toolCall.arguments;
           await connectToDatabase();
           const session = await VoiceSession.findOne({
             _id: sessionId,
