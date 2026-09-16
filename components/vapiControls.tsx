@@ -1,14 +1,23 @@
 'use client'
 
-import { Mic, MicOff } from 'lucide-react'
+import { Mic, MicOff, SendHorizontal } from 'lucide-react'
+import { useState } from 'react'
 import { IBook } from '@/types'
 import useVapi from '@/hooks/useVapi'
 import Image from 'next/image'
 import Transcript from '@/components/Transcript'
 
 const VapiControls = ({book} : {book: IBook}) => {
-    const { status, isActive, messages, currentMessage, currentUserMessage, start, stop, limitError } = useVapi(book);
+    const { status, isActive, messages, currentMessage, currentUserMessage, start, stop, limitError, sendText, isSending, chatError } = useVapi(book);
     const isAiProcessing = status === 'thinking' || status === 'speaking';
+    const [draft, setDraft] = useState('');
+
+    const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const text = draft;
+      setDraft('');
+      void sendText(text);
+    };
   return (
     <>
 
@@ -28,7 +37,7 @@ const VapiControls = ({book} : {book: IBook}) => {
               )}
               <button
                 onClick={() => (isActive ? stop() : start())}
-                disabled={status === 'connecting' || status === 'starting'}
+                disabled={status === 'connecting' || status === 'starting' || isSending}
                 type="button"
                 className={`vapi-mic-btn ${
                   isActive ? 'vapi-mic-btn-active' : 'vapi-mic-btn-inactive'
@@ -73,10 +82,39 @@ const VapiControls = ({book} : {book: IBook}) => {
               messages={messages}
               currentMessage={currentMessage}
               currentUserMessage={currentUserMessage}
+              bookId={book._id}
+              isVoiceLive={status !== 'idle'}
             />
           </div>
         </section>
-    
+
+        <form className="chat-input-form" onSubmit={handleSubmit}>
+          <input
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder={
+              status !== 'idle'
+                ? 'Voice chat is live — sending a message will end it'
+                : `Ask ${book.title} a question...`
+            }
+            aria-label={`Send a message to ${book.title}`}
+            maxLength={4000}
+            className="chat-input"
+            disabled={isSending}
+          />
+          <button
+            type="submit"
+            className="chat-send-btn"
+            disabled={isSending || draft.trim().length === 0}
+            aria-label="Send message"
+          >
+            <SendHorizontal className="size-5" aria-hidden="true" />
+          </button>
+        </form>
+        {chatError && (
+          <p className="mt-2 text-sm text-red-600" role="alert">{chatError}</p>
+        )}
+
     </>
    
   )

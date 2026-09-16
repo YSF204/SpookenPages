@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { ASSISTANT_ID, DEFAULT_VOICE } from "@/lib/constants";
 import { endVoiceSession, startVoiceSession } from "@/lib/actions/session.actions";
 import Vapi from "@vapi-ai/web";
+import { toast } from "sonner";
 
 export type CallStatus = 'idle' | 'connecting' | 'starting' | 'listening' | 'thinking' | 'speaking';
 
@@ -41,6 +42,8 @@ export const useVapi = (book: IBook) =>{
     const [currentUserMessage, setcurrentUserMessage] = useState<Messages | null>(null);
     const [duration, setduration] = useState(0);
     const [limitError, setlimitError] = useState<string | null>(null);
+    const [isSending, setIsSending] = useState(false);
+    const [chatError, setChatError] = useState<string | null>(null);
 
     const timerRef = useRef<NodeJS.Timeout | null>(null);
     const startTimeRef = useRef<number | null>(null);
@@ -83,6 +86,9 @@ export const useVapi = (book: IBook) =>{
         const handleSpeechEnd = () => setStatus("listening");
         const handleCallEnd = () => {
             void finishVoiceSession();
+            // Drop in-flight partials: no final transcript event follows a hang-up.
+            setcurrentMessage(null);
+            setcurrentUserMessage(null);
             setStatus("idle");
         };
         const handleMessage = (message: unknown) => {
@@ -157,7 +163,12 @@ export const useVapi = (book: IBook) =>{
             setlimitError("You must be logged in to start a conversation");
             return;
         }
+        if (isSending) {
+            toast.error("Wait for the book to finish its written reply before starting voice chat");
+            return;
+        }
 
+        toast.info("Switching to voice chat — typing is paused until you end the call");
         setlimitError(null);
         setStatus("connecting");
 
@@ -197,7 +208,44 @@ export const useVapi = (book: IBook) =>{
             await finishVoiceSession();
         }
     };
-    const clearErrors = () => setlimitError(null);
+    const sendText = async (text: string) => {
+        const content = text.trim();
+        if (!content || isSending) return;
+
+        // ponytail: history is sent whole on every turn; switch to a stored thread if books get long chats
+        const history: Messages[] = [...messages, { role: "user", content }].slice(-20);
+        setmessages(history);
+        setIsSending(true);
+        setChatError(null);
+
+        try {
+            // Voice and text can't run together: typing ends the live call first.
+            if (status !== "idle") {
+                toast.info("Switching to text chat — the voice call was ended");
+                await stop();
+            }
+
+            const response = await fetch("/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ bookId: book._id, messages: history }),
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error ?? "The book could not answer right now");
+
+            setmessages((current) => [...current, data.message as Messages]);
+        } catch (error) {
+            console.error("Text chat error", error);
+            setChatError(error instanceof Error ? error.message : "The book could not answer right now");
+        } finally {
+            setIsSending(false);
+        }
+    };
+
+    const clearErrors = () => {
+        setlimitError(null);
+        setChatError(null);
+    };
 
     return {
         status,
@@ -208,6 +256,9 @@ export const useVapi = (book: IBook) =>{
         duration,
         start,
         stop,
+        sendText,
+        isSending,
+        chatError,
         clearErrors,
         limitError,
          //maxDurationSeconds

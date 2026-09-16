@@ -7,6 +7,7 @@ import { redirect } from 'next/navigation';
 
 import { getBookBySlug } from '@/lib/actions/book.actions';
 import VapiControls from '@/components/vapiControls';
+import BookExtras from '@/components/BookExtras';
 
 export default async function BookPage({
   params,
@@ -31,6 +32,9 @@ export default async function BookPage({
 
         {/* Transcript section: conversation history and empty state. */}
         <VapiControls book={result.data} />
+
+        {/* Summary and quiz, generated from the book's stored segments. */}
+        <BookExtras book={result.data} />
       </div>
     </main>
   );

@@ -9,6 +9,7 @@ const bookSchema = new Schema<IBook>({
     slug: { type: String, required: true, lowercase: true, trim: true},
     author: { type: String, required: true , trim: true },
     persona: { type: String, required: false },
+    summary: { type: String, required: false },
     fileURL: { type: String, required: true },
     fileBlobKey: { type: String, required: true },
     coverURL: { type: String, required: true },
