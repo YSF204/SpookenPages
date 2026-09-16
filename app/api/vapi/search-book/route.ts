@@ -10,37 +10,75 @@ const toolCallSchema = z.object({
   id: z.string().min(1),
   name: z.string(),
   arguments: z.object({
-    bookId: z.string().min(1),
     query: z.string().min(1),
-    sessionId: z.string().min(1),
   }),
 });
 
-const requestSchema = z.object({
-  message: z.object({
+// The assistant only supplies the query: bookId and sessionId come from the call
+// itself, so the model never has to know (or say out loud) either id. Vapi puts
+// those variables in different places depending on the message, so look in all of
+// them rather than pinning one path.
+const variablesSchema = z.object({
+  bookId: z.string().min(1),
+  sessionId: z.string().min(1),
+});
+
+const requestSchema = z.looseObject({
+  message: z.looseObject({
     type: z.literal('tool-calls'),
     toolCallList: z.array(toolCallSchema),
   }),
 });
 
+const findVariables = (message: Record<string, unknown>) => {
+  const call = message.call as Record<string, any> | undefined;
+  const candidates = [
+    call?.assistantOverrides?.variableValues,
+    (message.artifact as Record<string, any> | undefined)?.variableValues,
+    call?.artifact?.variableValues,
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = variablesSchema.safeParse(candidate);
+    if (parsed.success) return parsed.data;
+  }
+  return null;
+};
+
 export async function POST(request: Request) {
   if (request.headers.get('x-vapi-secret') !== process.env.VAPI_WEBHOOK_SECRET) {
+    console.error('Vapi tool call rejected: x-vapi-secret header did not match', {
+      headerPresent: request.headers.has('x-vapi-secret'),
+      secretConfigured: Boolean(process.env.VAPI_WEBHOOK_SECRET),
+    });
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const payload = await request.json();
+
   let body;
   try {
-    body = requestSchema.parse(await request.json());
-  } catch {
+    body = requestSchema.parse(payload);
+  } catch (error) {
+    console.error('Vapi tool call payload rejected', error, JSON.stringify(payload).slice(0, 2000));
     return NextResponse.json({ error: 'Invalid Vapi tool call' }, { status: 400 });
   }
 
+  const variables = findVariables(body.message);
+  if (!variables) {
+    console.error(
+      'Vapi tool call is missing bookId/sessionId variables',
+      JSON.stringify(payload).slice(0, 2000),
+    );
+    return NextResponse.json({ error: 'Missing call variables' }, { status: 400 });
+  }
+  const { bookId: requestedBookId, sessionId } = variables;
+
   const results = await Promise.all(
     body.message.toolCallList
-      .filter((toolCall) => toolCall.name === 'search book')
       .map(async (toolCall) => {
         try {
-          const { bookId: requestedBookId, query, sessionId } = toolCall.arguments;
+          const { query } = toolCall.arguments;
           await connectToDatabase();
           const session = await VoiceSession.findOne({
             _id: sessionId,
