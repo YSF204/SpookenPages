@@ -86,6 +86,9 @@ export const useVapi = (book: IBook) =>{
         const handleSpeechEnd = () => setStatus("listening");
         const handleCallEnd = () => {
             void finishVoiceSession();
+            // Drop in-flight partials: no final transcript event follows a hang-up.
+            setcurrentMessage(null);
+            setcurrentUserMessage(null);
             setStatus("idle");
         };
         const handleMessage = (message: unknown) => {
@@ -209,12 +212,6 @@ export const useVapi = (book: IBook) =>{
         const content = text.trim();
         if (!content || isSending) return;
 
-        // Voice and text can't run together: typing ends the live call first.
-        if (status !== "idle") {
-            toast.info("Switching to text chat — the voice call was ended");
-            await stop();
-        }
-
         // ponytail: history is sent whole on every turn; switch to a stored thread if books get long chats
         const history: Messages[] = [...messages, { role: "user", content }].slice(-20);
         setmessages(history);
@@ -222,6 +219,12 @@ export const useVapi = (book: IBook) =>{
         setChatError(null);
 
         try {
+            // Voice and text can't run together: typing ends the live call first.
+            if (status !== "idle") {
+                toast.info("Switching to text chat — the voice call was ended");
+                await stop();
+            }
+
             const response = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },

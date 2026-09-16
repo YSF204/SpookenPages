@@ -82,6 +82,8 @@ const VapiControls = ({book} : {book: IBook}) => {
               messages={messages}
               currentMessage={currentMessage}
               currentUserMessage={currentUserMessage}
+              bookId={book._id}
+              isVoiceLive={status !== 'idle'}
             />
           </div>
         </section>
@@ -96,6 +98,7 @@ const VapiControls = ({book} : {book: IBook}) => {
                 : `Ask ${book.title} a question...`
             }
             aria-label={`Send a message to ${book.title}`}
+            maxLength={4000}
             className="chat-input"
             disabled={isSending}
           />

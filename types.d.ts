@@ -16,6 +16,7 @@ export interface IBook extends Document {
     slug: string;
     author: string;
     persona?: string;
+    summary?: string;
     fileURL: string;
     fileBlobKey: string;
     coverURL: string;
@@ -24,6 +25,13 @@ export interface IBook extends Document {
     totalSegments: number;
     createdAt: Date;
     updatedAt: Date;
+}
+
+export interface QuizQuestion {
+    question: string;
+    options: string[];
+    answerIndex: number;
+    explanation: string;
 }
 
 export interface IBookSegment extends Document {

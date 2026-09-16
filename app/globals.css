@@ -589,7 +589,10 @@
     @apply flex justify-end;
   }
   .transcript-message-assistant {
-    @apply flex justify-start;
+    @apply flex justify-start items-end gap-1.5;
+  }
+  .transcript-speak-btn {
+    @apply shrink-0 mb-1 p-1.5 rounded-full text-[#8b7355] opacity-60 transition-opacity hover:opacity-100 disabled:opacity-30;
   }
   .transcript-bubble {
     @apply max-w-[80%] px-6 py-4 text-base font-medium leading-7 rounded-2xl;
@@ -611,6 +614,59 @@
   }
   .transcript-empty-hint {
     @apply text-[var(--text-muted)] text-sm mt-1;
+  }
+  /* ===========================================
+     BOOK EXTRAS (SUMMARY + QUIZ)
+     =========================================== */
+  .book-extras {
+    @apply w-full mt-3 flex flex-col gap-2;
+  }
+  .book-extras-panel {
+    @apply bg-white rounded-[14px] overflow-hidden;
+  }
+  .book-extras-summary-btn {
+    @apply flex items-center gap-2 p-4 font-bold text-[#212a3b] cursor-pointer select-none;
+
+    /* display:flex drops the native marker, so the chevron below is the affordance. */
+    &::-webkit-details-marker {
+      display: none;
+    }
+  }
+  .book-extras-chevron {
+    @apply ml-auto transition-transform;
+  }
+  .book-extras-panel[open] .book-extras-chevron {
+    @apply rotate-180;
+  }
+  .book-extras-body {
+    @apply flex flex-col gap-3 px-4 pb-4 text-[#3d485e] leading-7;
+  }
+  .book-extras-loading {
+    @apply flex items-center gap-2 text-[var(--text-muted)];
+  }
+  .book-extras-action {
+    @apply self-start inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#663820] text-white font-medium disabled:opacity-40;
+  }
+  .quiz-question {
+    @apply flex flex-col gap-1.5;
+  }
+  .quiz-legend {
+    @apply mb-1.5 font-medium text-[#212a3b];
+  }
+  .quiz-option {
+    @apply flex items-center gap-2 px-3 py-2 rounded-lg border border-[var(--border-subtle)] cursor-pointer;
+  }
+  .quiz-option-correct {
+    @apply border-green-600 bg-green-50;
+  }
+  .quiz-option-wrong {
+    @apply border-red-600 bg-red-50;
+  }
+  .quiz-explanation {
+    @apply mt-1 text-sm text-[var(--text-muted)];
+  }
+  .quiz-result {
+    @apply flex items-center gap-3;
   }
   .chat-input-form {
     @apply mt-3 flex w-full items-center gap-2 bg-white rounded-[14px] p-2;

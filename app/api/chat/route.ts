@@ -39,30 +39,43 @@ export async function POST(request: Request) {
   const book = await Book.findOne({ _id: body.bookId, clerkId: userId })
     .select({ title: 1, author: 1 })
     .lean()
-    .catch(() => null);
+    .catch((error) => {
+      console.error('Chat book lookup failed', error);
+      return null;
+    });
 
   if (!book) return NextResponse.json({ error: 'Book not found' }, { status: 404 });
 
   const question = body.messages.findLast((message) => message.role === 'user')?.content;
   const segments = question
-    ? await searchBookSegments(body.bookId, question, 3).catch(() => [])
+    ? await searchBookSegments(body.bookId, question, 3).catch((error) => {
+        console.error('Chat segment search failed', error);
+        return [];
+      })
     : [];
   const context = segments.map((segment) => segment.content).join('\n\n');
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: `You are the book "${book.title}" by ${book.author}, talking with a reader. Answer using the excerpts below and say plainly when they do not cover the question. Keep replies under 150 words.\n\nExcerpts:\n${context || 'no information found about this topic'}`,
-        },
-        ...body.messages,
-      ],
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(30_000),
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: `You are the book "${book.title}" by ${book.author}, talking with a reader. Answer using the excerpts below and say plainly when they do not cover the question. Keep replies under 150 words.\n\nExcerpts:\n${context || 'no information found about this topic'}`,
+          },
+          ...body.messages,
+        ],
+      }),
+    });
+  } catch (error) {
+    console.error('OpenAI chat request failed', error);
+    return NextResponse.json({ error: 'The book could not answer right now' }, { status: 502 });
+  }
 
   if (!response.ok) {
     console.error('OpenAI chat failed', response.status, await response.text());
