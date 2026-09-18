@@ -27,7 +27,7 @@ function AuthControls() {
         <div className="nav-user-link">
           <UserButton />
           {firstName ? (
-            <Link href="/subscription" className="nav-user-name">
+            <Link href="/profile" className="nav-user-name">
               {firstName}
             </Link>
           ) : null}
