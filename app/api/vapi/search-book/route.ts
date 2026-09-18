@@ -6,13 +6,19 @@ import VoiceSession from '@/Database/models/voiceSession.model';
 import { searchBookSegments } from '@/lib/actions/book.actions';
 
 const NO_INFORMATION_FOUND = 'no information found about this topic';
-const toolCallSchema = z.object({
+const toolCallSchema = z.looseObject({
   id: z.string().min(1),
-  name: z.string(),
-  arguments: z.object({
-    query: z.string().min(1),
-  }),
 });
+
+// Vapi sends the call as either {id, name, arguments} or {id, function: {name,
+// arguments}}, and arguments is sometimes a JSON string. Accept all of them.
+const getQuery = (toolCall: Record<string, any>) => {
+  const raw = toolCall.arguments ?? toolCall.function?.arguments;
+  const args = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  const query = typeof args?.query === 'string' ? args.query.trim() : '';
+  if (!query) throw new Error('Tool call is missing a query');
+  return query;
+};
 
 // The assistant only supplies the query: bookId and sessionId come from the call
 // itself, so the model never has to know (or say out loud) either id. Vapi puts
@@ -78,7 +84,7 @@ export async function POST(request: Request) {
     body.message.toolCallList
       .map(async (toolCall) => {
         try {
-          const { query } = toolCall.arguments;
+          const query = getQuery(toolCall);
           await connectToDatabase();
           const session = await VoiceSession.findOne({
             _id: sessionId,
